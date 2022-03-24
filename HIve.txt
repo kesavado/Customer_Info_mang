@@ -1,0 +1,111 @@
+1. Validate all input – output record count
+
+/*In Sql*/
+
+select count(CUST_ID) from CUSTOMER;
+select count(ITEM_CODE) from ITEMS;
+select count(TRAN_ID) from CUST_ITEM;
+
+/*After importing into hive */
+use custinfo;
+select count(cust_id) from customers;
+select count(item_code) from items;
+select count(tran_id) from cust_item;
+
+	sqoop import --connect jdbc:mysql://localhost/custinfo --username root --password root  --table ITEM -validate -m1
+	sqoop import --connect jdbc:mysql://localhost/custinfo --username root --password root  --table CUST_ITEM -validate -m1
+	sqoop import --connect jdbc:mysql://localhost/custinfo --username root --password root  --table CUSTOMER-validate -m1
+
+2. Validate null in all target value columns
+
+/* in hive use custinfo *//* validating for not null constraint in table */
+
+select count(*) from customer where cust_f_name is null ;
+
+3. Create partition YEAR/MONTH in hive
+
+   <<<<<<Month>>>>> 	
+	create external table cust_part_month(tran_id int,tran_date date,cust_id int,cust_f_name varchar(40),cust_m_name varchar(30),cust_l_name varchar(40),item_code int,item_name varchar(30),item_price decimal (7,3)) partitioned by (month int) row format delimited fields terminated by ',' lines terminated by'\n' stored as textfile location '/user/hduser/outputdir/month_part/' ;
+
+	insert into target_custinfo.cust_part_month partition(month) select/*+MAPJOIN(t)*/t.tran_id,t.tran_date,c.cust_id,c.cust_f_name,c.cust_m_name,c.cust_l_name,i.item_code,i.item_name,i.item_price,month(t.tran_date) from cust_item t join customer c on c.cust_id=t.cust_id join item i on i.item_code=t.item_code;
+
+    <<<<<Year>>>>>
+
+	create external table cust_part_year(tran_id int,tran_date date,cust_id int,cust_f_name varchar(40),cust_m_name varchar(30),cust_l_name varchar(40),cust_city varchar(30),cust_state varchar(40),item_code int,item_name varchar(30),item_price decimal (7,3),no_of_item int) partitioned by (year int) row format delimited fields terminated by ',' lines terminated by'\n' stored as textfile location '/user/hduser/outputdir/year_part/';
+
+	insert into custinfo.cust_part_year partition(year) select/*+MAPJOIN(t)*/t.tran_id,t.tran_date,c.cust_id,c.cust_f_name,c.cust_m_name,c.cust_l_name,c.cust_street,c.cust_state,i.item_code,i.item_name,i.item_price,t.no_of_item,year(t.tran_date) from cust_item t join customer c on c.cust_id=t.cust_id join item i on i.item_code=t.item_code;
+
+
+4. Create Daily/Weekly/Monthly/Qtrly/Annul Customer – Item details
+
+	<<<<<Daily>>>>>> 
+
+select t.tran_id,t.tran_date,c.cust_id,c.cust_f_name,c.cust_m_name,c.cust_l_name,i.item_code,i.item_name,i.item_price from cust_item t join customer c on c.cust_id=t.cust_id join item i on i.item_code=t.item_code;
+
+	<<<<<<Weekly>>>>> 
+
+select t.tran_id,t.tran_date,weekofyear(t.tran_date),c.cust_id,c.cust_f_name,c.cust_m_name,c.cust_l_name,i.item_code,i.item_name,i.item_price from cust_item t join customer c on c.cust_id=t.cust_id join item i on i.item_code=t.item_code;
+
+	<<<<<<Monthly>>>>>>
+
+select t.tran_id,t.tran_date,c.cust_id,c.cust_f_name,c.cust_m_name,c.cust_l_name,i.item_code,i.item_name,i.item_price,month(t.tran_date) from cust_item t join customer c on c.cust_id=t.cust_id join item i on i.item_code=t.item_code;
+
+	<<<<quarterly>>>>>
+
+select case when month(t.tran_date)>=1 and month(t.tran_date)<=3 then 'qtr1' when month(t.tran_date)>=4 and month(t.tran_date)<=6 then 'qtr2' when month(t.tran_date)>=7 and month(t.tran_date)<=9 then 'qtr3' when month(t.tran_date)>=10 and month(t.tran_date)<=12 then 'qtr4' end ,t.tran_id,t.tran_date,c.cust_id,c.cust_f_name,c.cust_m_name,c.cust_l_name,c.cust_street,c.cust_state,i.item_code,i.item_name,i.item_price,t.no_of_item,year(t.tran_date) from cust_item t join customer c  on c.cust_id=t.cust_id join item i on i.item_code=t.item_code;
+
+	<<<<<Annual>>>>>>
+
+select t.tran_id,t.tran_date,c.cust_id,c.cust_f_name,c.cust_m_name,c.cust_l_name,c.cust_street,c.cust_state,i.item_code,i.item_name,i.item_price,t.no_of_item,year(t.tran_date) from cust_item t join customer c on c.cust_id=t.cust_id join item i on i.item_code=t.item_code;
+
+
+5. Find top Five customer purchased Value wise - monthly - Name
+
+select YEAR(TRAN_DATE) AS Yearly, date_format(TRAN_DATE,'MMMM') AS Monthly, CUST_ID ,cust_name,Total_Purchase FROM (SELECT t.TRAN_ID,t.TRAN_DATE,t.CUST_ID,concat(c.cust_f_name,c.cust_m_name,c.cust_l_name) as cust_name,ROUND(NO_OF_ITEM*ITEM_PRICE,2) AS Total_Purchase, RANK() OVER(partition by YEAR(TRAN_DATE),MONTH(TRAN_DATE) ORDER BY ROUND(NO_OF_ITEM*ITEM_PRICE,2)DESC) AS Rank_Value from customer c join cust_item t on c.cust_id=t.cust_id join item i on i.item_code = t.item_code) as x where Rank_Value<=5;
+
+6. Find top five items purchased Value wise - monthly - Name
+
+select YEAR(TRAN_DATE) AS Yearly, date_format(TRAN_DATE,'MMMM') AS Monthly,Item_Name,Total_Purchase FROM (SELECT t.TRAN_DATE,t.CUST_ID,i.ITEM_NAME as Item_Name,ROUND(NO_OF_ITEM*ITEM_PRICE,2) AS Total_Purchase, RANK() OVER(partition by YEAR(TRAN_DATE),MONTH(TRAN_DATE) ORDER BY YEAR(TRAN_DATE),ROUND(NO_OF_ITEM*ITEM_PRICE,2)DESC) AS Rank_Value from customer c join cust_item t on c.cust_id=t.cust_id join item i on i.item_code = t.item_code) as x where Rank_Value<=5;
+
+7. Find three least moved item value wise -  monthly 
+
+select YEAR(TRAN_DATE) AS Yearly, date_format(TRAN_DATE,'MMMM') AS Monthly,Item_Name,Total_Purchase FROM (SELECT t.TRAN_DATE,t.CUST_ID,i.ITEM_NAME as Item_Name,ROUND(NO_OF_ITEM*ITEM_PRICE,2) AS Total_Purchase, RANK() OVER(partition by YEAR(TRAN_DATE),MONTH(TRAN_DATE) ORDER BY YEAR(TRAN_DATE),ROUND(NO_OF_ITEM*ITEM_PRICE,2) ASC) AS Rank_Value from customer c join cust_item t on c.cust_id=t.cust_id join item i on i.item_code = t.item_code) as x where Rank_Value<=3;
+
+
+8. Find three top most item & bottom most item qty-wise  -  monthly (separately)
+
+	<<<<TOP>>>>
+select YEAR(TRAN_DATE) AS Yearly, date_format(TRAN_DATE,'MMMM') AS Monthly,Item_Name,Qty FROM (SELECT t.TRAN_DATE,t.CUST_ID,i.ITEM_NAME as Item_Name,NO_OF_ITEM AS Qty, RANK() OVER(partition by YEAR(TRAN_DATE),MONTH(TRAN_DATE) ORDER BY YEAR(TRAN_DATE),NO_OF_ITEM DESC) AS Rank_Value from customer c join cust_item t on c.cust_id=t.cust_id join item i on i.item_code = t.item_code) as x where Rank_Value<=3;
+
+	<<<<Bottom>>
+select YEAR(TRAN_DATE) AS Yearly, date_format(TRAN_DATE,'MMMM') AS Monthly,Item_Name,Qty FROM (SELECT t.TRAN_DATE,t.CUST_ID,i.ITEM_NAME as Item_Name,NO_OF_ITEM AS Qty, RANK() OVER(partition by YEAR(TRAN_DATE),MONTH(TRAN_DATE) ORDER BY YEAR(TRAN_DATE),NO_OF_ITEM ASC) AS Rank_Value from customer c join cust_item t on c.cust_id=t.cust_id join item i on i.item_code = t.item_code) as x where Rank_Value<=3;
+
+
+
+
+11.Find State & City wise MIN,MAX & Avg purchase -  Annually 
+
+min_max_avg.csv
+
+insert overwrite directory '/user/custinfo/outputdir/min_max_avg.csv' row format delimited fields terminated by ',' select c.cust_street,c.cust_state,min(x.total_purchase),max(x.total_purchase),round(avg(x.total_purchase),3) from customer c join (select t.tran_id,t.tran_date,t.cust_id,t.item_code,t.no_of_item,round(t.no_of_item*i.item_price,2) as total_purchase from cust_item t join item i on i.item_code=t.item_code) as x on c.cust_id=x.cust_id group by c.cust_street,c.cust_state;
+
+min_max_avg_statewise.csv
+
+insert overwrite directory '/user/custinfo/outputdir/min_max_avg_statewise.csv' row format delimited fields terminated by ',' select c.cust_state,min(x.total_purchase),max(x.total_purchase),round(avg(x.total_purchase),3) from customer c join (select t.tran_id,t.tran_date,t.cust_id,t.item_code,t.no_of_item,round(t.no_of_item*i.item_price,2) as total_purchase from cust_item t join item i on i.item_code=t.item_code) as x on c.cust_id=x.cust_id group by c.cust_state;
+
+min_max_avg_citywise.csv
+
+insert overwrite directory '/user/custinfo/outputdir/min_max_avg_citywise.csv' row format delimited fields terminated by ',' select c.cust_street,min(x.total_purchase),max(x.total_purchase),round(avg(x.total_purchase),3) from customer c join (select t.tran_id,t.tran_date,t.cust_id,t.item_code,t.no_of_item,round(t.no_of_item*i.item_price,2) as total_purchase from cust_item t join item i on i.item_code=t.item_code) as x on c.cust_id=x.cust_id group by c.cust_street;
+
+
+
+
+
+
+
+
+
+
+
+
+

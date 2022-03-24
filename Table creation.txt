@@ -1,0 +1,50 @@
+sudo mysql -u root -p
+Enter password:
+create database custinfo;
+use custinfo;
+
+Create table CUSTOMER(
+CUST_ID   INT(10) primarykey ,
+CUST_F_NAME VARCHAR(40) NOT NULL,
+CUST_M_NAME VARCHAR(40),
+CUST_L_NAME VARCHAR(40),
+CUST_SSN  INT(9) NOT NULL,
+CUST_STREET  VARCHAR(38),
+CUST_CITY  VARCHAR(30) NOT NULL,
+CUST_STATE  VARCHAR(30),
+CUST_COUNTRY VARCHAR(30),
+CUST_ZIP INT(7),
+CUST_PHONE VARCHAR(12),
+CUST_EMAIL  VARCHAR(40)
+);
+
+Create table ITEM(
+ITEM_CODE  INT(10),
+ITEM_NAME VARCHAR(30) NOT NULL,
+ITEM_PRICE float NOT NULL
+);
+
+Create table CUST_ITEM(
+TRAN_ID INT,
+TRAN_DATE DATE,
+CUST_ID INT(10) ,
+ITEM_CODE  INT(10) NOT NULL,
+NO_OF_ITEM INT(5) NOT NULL
+);
+
+/* check the admin privelage by ls -l if theres a privelage of  d rwx r-x r-- then folder has read write and execute else acess by cd/ directory 
+ sudo chmod -R 777  use this command to change the privelage */
+
+load data infile '/var/lib/mysql-files/data/cust.csv' into table CUSTOMER fields terminated by ',' lines terminated by'\n';
+load data infile '/var/lib/mysql-files/data/item.csv' into table ITEM fields terminated by ',' lines terminated by'\n';
+load data infile '/var/lib/mysql-files/data/trans.csv' into table CUST_ITEM fields terminated by ',' lines terminated by'\n';
+quit;
+
+
+sqoop import --connect jdbc:mysql://localhost/custinfo --table ITEM  --username root --password root  --table ITEM -target-dir '/user/hive/warehouse/custinfo/ITEM' 
+sqoop import --connect jdbc:mysql://localhost/custinfo --username root --password root  --table CUSTOMER -target-dir '/user/hive/warehouse/custinfo/CUSTOMER' 
+sqoop import --connect jdbc:mysql://localhost/custinfo --username root --password root  --table CUST_ITEM -target-dir '/user/hive/warehouse/custinfo/CUST_ITEM'
+
+load data inpath '/user/hive/warehouse/custinfo/ITEM' into table ITEM;
+load data inpath '/user/hive/warehouse/custinfo/CUSTOMER' into table CUSTOMER;
+load data inpath '/user/hive/warehouse/custinfo/CUST_ITEM' into table CUST_ITEM;

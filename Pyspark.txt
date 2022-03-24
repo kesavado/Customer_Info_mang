@@ -1,0 +1,142 @@
+cd $HADOOP_HOME
+sbin/start-all.sh
+jps
+pyspark
+
+sqlContext.sql("set hive.exec.dynamic.partition.mode=nonstrict")
+
+4. Create Daily/Weekly/Monthly/Qtrly/Annul Customer – Item details
+
+		<<<daily>>>
+
+hive >>> create external table target_custinfohive.daily_item_customer(tran_id int,tran_date date,cust_f_name varchar(40),cust_m_name varchar(40),cust_l_name varchar(40),item_name varchar(40),item_price float) row format delimited fields terminated by ',' lines terminated by '\n' stored as parquet location '/user/custinfo/outputdir/item_details';
+
+
+pyspark
+>>>
+sqlContext.sql("insert into target_custinfohive.daily_item_customer select t.tran_id,t.tran_date,c.cust_f_name,c.cust_m_name,c.cust_l_name,i.item_name,round(i.item_price,2) from custinfo.cust_item t join custinfo.customer c on c.cust_id=t.cust_id join custinfo.item i on i.item_code=t.item_code").show()
+
+
+		<<<<<<Weekly>>>>> 
+
+hive >>> create external table weekly_item_customer(tran_id int,tran_date date,week_of_year int,Year int,cust_f_name varchar(40),cust_m_name varchar(40),cust_l_name varchar(40),item_name varchar(40),item_price float) row format delimited fields terminated by ',' lines terminated by '\n' stored as parquet location '/user/custinfo/outputdir/week_details';
+
+pyspark 
+>>>
+sqlContext.sql("insert into target_custinfohive.weekly_item_customer select t.tran_id,t.tran_date,weekofyear(t.tran_date),year(t.tran_date),c.cust_f_name,c.cust_m_name,c.cust_l_name,i.item_name,round(i.item_price,2) from custinfo.cust_item t join custinfo.customer c on c.cust_id=t.cust_id join custinfo.item i on i.item_code=t.item_code").show()
+
+		<<<<<<Monthly>>>>>>
+
+hive >>> create external table monthly_item_customer(tran_id int,tran_date date,cust_f_name varchar(40),cust_m_name varchar(40),cust_l_name varchar(40),item_name varchar(40),item_price float,month int,year int) row format delimited fields terminated by ',' lines terminated by '\n' stored as parquet location '/user/custinfo/outputdir/month_details';
+
+
+pyspark 
+>>>
+sqlContext.sql("insert into target_custinfohive.monthly_item_customer select t.tran_id,t.tran_date,c.cust_f_name,c.cust_m_name,c.cust_l_name,i.item_name,round(i.item_price,2),month(t.tran_date),year(t.tran_date)from custinfo.cust_item t join custinfo.customer c on c.cust_id=t.cust_id join custinfo.item i on i.item_code=t.item_code").show()
+
+		<<<<<Annual>>>>>>
+
+hive >>> create external table annual_item_customer(tran_id int,tran_date date,cust_f_name varchar(40),cust_m_name varchar(40),cust_l_name varchar(40),item_name varchar(40),item_price float,year int) row format delimited fields terminated by ',' lines terminated by '\n' stored as parquet location '/user/custinfo/outputdir/annual_details';
+
+pyspark 
+>>>
+sqlContext.sql("insert into target_custinfohive.annual_item_customer select t.tran_id, t.tran_date, c.cust_f_name, c.cust_m_name, c.cust_l_name,i.item_name,round(i.item_price,2),year(t.tran_date) from custinfo.cust_item t join custinfo.customer c on c.cust_id=t.cust_id join custinfo.item i on i.item_code=t.item_code").show()
+
+spark.sql("select * from target_custinfohive.daily_item_customer").show()
+
+
+5. Find top Five customer purchased Value wise - monthly - Name
+
+hdfs dfs -rm -r /user/custinfo/outputdir/top5_cust_valuewise
+
+hive >>> create external table top5_customer_valuewise (year int,Month varchar(30),cust_id int,cust_name varchar(120),purchase_value float) row format delimited fields terminated by ',' lines terminated by '\n' stored as parquet location '/user/custinfo/outputdir/top5_cust_valuewise';
+
+pyspark 
+>>>
+
+sqlContext.sql("insert into target_custinfohive.top5_customer_valuewise select YEAR(TRAN_DATE) AS Yearly, date_format(TRAN_DATE,'MMMM') AS Monthly, CUST_ID ,cust_name,Total_Purchase FROM (SELECT t.TRAN_ID,t.TRAN_DATE,t.CUST_ID,concat(c.cust_f_name,c.cust_m_name,c.cust_l_name) as cust_name,ROUND(NO_OF_ITEM*ITEM_PRICE,2) AS Total_Purchase, RANK() OVER(partition by YEAR(TRAN_DATE),MONTH(TRAN_DATE) ORDER BY YEAR(TRAN_DATE),ROUND(NO_OF_ITEM*ITEM_PRICE,2)DESC) AS Rank_Value from custinfo.customer c join custinfo.cust_item t on c.cust_id=t.cust_id join custinfo.item i on i.item_code = t.item_code) as x where Rank_Value<=5").show()
+
+
+
+6. Find top five items purchased Value wise - monthly - Name
+
+hive >>> create external table top5_item_valuewise (year int,month varchar(30),item_name varchar(40),purchase_value float)row format delimited fields terminated by ',' lines terminated by '\n' stored as parquet location '/user/custinfo/outputdir/top5_qty_valuewise';
+
+pyspark
+>>>>>
+sqlContext.sql("insert into target_custinfohive.top5_item_valuewise select YEAR(TRAN_DATE) AS Yearly, date_format(TRAN_DATE,'MMMM') AS Monthly,Item_Name,Total_Purchase FROM (SELECT t.TRAN_DATE,t.CUST_ID,i.ITEM_NAME as Item_Name,ROUND(NO_OF_ITEM*ITEM_PRICE,2) AS Total_Purchase, RANK() OVER(partition by YEAR(TRAN_DATE),MONTH(TRAN_DATE) ORDER BY YEAR(TRAN_DATE),ROUND(NO_OF_ITEM*ITEM_PRICE,2)DESC) AS Rank_Value from custinfo.customer c join custinfo.cust_item t on c.cust_id=t.cust_id join custinfo.item i on i.item_code = t.item_code) as x where Rank_Value<=5").show()
+
+
+
+7. Find three least moved item value wise -  monthly 
+
+hive>>> create external table less_item_valuewise (year int,month varchar(30),item_name varchar(40),purchase_value float)row format delimited fields terminated by ',' lines terminated by '\n' stored as parquet location '/user/custinfo/outputdir/less_qty_valuewise';
+
+
+pyspark
+>>>>>
+sqlContext.sql("insert into target_custinfohive.less_item_valuewise select YEAR(TRAN_DATE) AS Yearly, date_format(TRAN_DATE,'MMMM') AS Monthly,Item_Name,Total_Purchase FROM (SELECT t.TRAN_DATE,t.CUST_ID,i.ITEM_NAME as Item_Name,ROUND(NO_OF_ITEM*ITEM_PRICE,2) AS Total_Purchase, RANK() OVER(partition by YEAR(TRAN_DATE),MONTH(TRAN_DATE) ORDER BY YEAR(TRAN_DATE),ROUND(NO_OF_ITEM*ITEM_PRICE,2) ASC) AS Rank_Value from custinfo.customer c join custinfo.cust_item t on c.cust_id=t.cust_id join custinfo.item i on i.item_code = t.item_code) as x where Rank_Value<=3").show()
+
+
+
+
+8. Find three top most item & bottom most item qty-wise  -  monthly (separately)
+
+	<<<<TOP>>>>
+hive >>> create external table top_item_qtywise(item_code int,item_name varchar(30),quantity_sold float,year int,Month varchar(20),Rank int)row format delimited fields terminated by ',' lines terminated by '\n' stored as parquet location '/user/custinfo/outputdir/top_item_qtywise';
+
+pyspark
+>>>>>
+sqlContext.sql("insert into target_custinfohive.top_item_qtywise select i.item_code,upper(i.item_name) as ITEM_NAME, round(sum(t.no_of_item),2) as QUANTITY_SOLD, year(t.tran_date) as YEAR, date_format(t.tran_date,'MMMM') as MONTH,RANK() OVER (PARTITION BY year(t.tran_date),date_format(t.tran_date,'MMMM') ORDER BY sum(t.no_of_item) desc) as RANK from custinfo.cust_item t join custinfo.item i on i.item_code = t.item_code where year(t.tran_date) between 2017 and 2019 and month(t.tran_date) between 01 and 12 group by 1,2,4,5 order by 6,4,5 limit 133").show() 
+
+
+	<<<<Bottom>>
+hive >>>create external table less_item_qtywise(item_code int,item_name varchar(30),quantity_sold float,year int,Month varchar(20),Rank int)row format delimited fields terminated by ',' lines terminated by '\n' stored as parquet location '/user/custinfo/outputdir/less_item_qtywise';
+
+pyspark
+>>>>>
+
+sqlContext.sql("insert into target_custinfohive.less_item_qtywise select i.item_code,upper(i.item_name) as ITEM_NAME, round(sum(t.no_of_item),2) as QUANTITY_SOLD, year(t.tran_date) as YEAR, date_format(t.tran_date,'MMMM') as MONTH,RANK() OVER (PARTITION BY year(t.tran_date),date_format(t.tran_date,'MMMM') ORDER BY sum(t.no_of_item)) as RANK from custinfo.cust_item t join custinfo.item i on i.item_code = t.item_code where year(t.tran_date) between 2017 and 2020 and month(t.tran_date) between 01 and 12 group by 1,2,4,5 order by 6,4,5 limit 191").show() 
+
+
+
+9. Rank the 1st & 2nd best item sold qty wise-Quarter-wise
+
+hive >> 
+create external table rank_top2_item_qtywise(item_code int,item_name varchar(40),total_items int,rank int,year int,quarter int) row format delimited fields terminated by ',' lines terminated by '\n' stored as parquet location '/user/hduser/outputdir/rank_top_2_item_qtywise';
+
+pyspark
+>>>>
+sqlContext.sql("insert into target_custinfohive.rank_top2_item_qtywise select i.item_code,i.item_name,sum(t.no_of_item) as total_items,DENSE_RANK() OVER (PARTITION BY year(t.tran_date),quarter(t.tran_date) ORDER BY sum(t.no_of_item) desc) as rank,year(t.tran_date) as year,quarter(t.tran_date) as quarter from custinfo.cust_item t join custinfo.item i on t.item_code = i.item_code where year(t.tran_date) between 2017 and 2019 and quarter(t.tran_date) between 1 and 4 group by 1,2,5,6 order by 4,5,6 limit 24").show(24)
+
+
+10.Rank the 1st & 2nd best customer value wise-Quarter-wise
+
+hive>>>
+create external table rank_top2_cust_valueswise(cust_id int,cust_ssn int,name varchar(40),total_price double,year int, quarter int, rank int) row format delimited fields terminated by ',' lines terminated by '\n' stored as parquet location '/user/custinfodb/outputdir/rank_top2_cust_valuewise';
+
+pyspark
+>>>>
+sqlContext.sql("insert into target_custinfohive.rank_top2_cust_valueswise select c.cust_id,c.cust_ssn,concat(c.cust_f_name,' ',c.cust_m_name,' ',c.cust_l_name) as NAME,round(sum(i.item_price * t.no_of_item),2) as total_price,year(t.tran_date) as year,quarter(t.tran_date) as quarter,DENSE_RANK() OVER(PARTITION BY year(t.tran_date),quarter(t.tran_date) ORDER BY sum(i.item_price * t.no_of_item) desc) as rank from custinfo.customer c join custinfo.cust_item t on c.cust_id = t.cust_id join  custinfo.item i on i.item_code = t.item_code where quarter(t.tran_date) between 1 and 4 and year(t.tran_date) between 2017 and 2019 group by 1,2,3,5,6 order by 7,5,6,4 desc limit 24").show()
+
+
+11. Find State & City wise MIN,MAX & Avg purchase -  Annually
+
+pyspark 
+>>>>
+df=spark.sql("select c.cust_street,c.cust_state,min(x.total_purchase) as minimum,max(x.total_purchase) as maximum ,round(avg(x.total_purchase),3) as average from custinfo.customer c join (select t.tran_id,t.tran_date,t.cust_id,t.item_code,t.no_of_item,round(t.no_of_item*i.item_price,2) as total_purchase from custinfo.cust_item t join custinfo.item i on i.item_code=t.item_code) as x on c.cust_id=x.cust_id group by c.cust_street,c.cust_state")
+
+df.repartition(1).write.format("csv").mode("overwrite").option("header","true").save("/home/hduser/filedata/min_max_avg.csv")
+
+
+
+
+
+
+
+
+
+
+
+
+
