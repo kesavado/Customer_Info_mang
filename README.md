@@ -1,2 +1,2 @@
 # Customer_Info_mang
-Theres data that has been created locally by user and recieves as .csv in the s3 path, that will be loaded into Hadoop Architure and we perform basic insights of the data.
+For a retail stote the Customers data(registering and theres pruchases) has to be analyzed for better bussiness insight. for this a Bigdata plaatform HADOOP has been used for creating local data lake, by collecting data from S3 path that gets stores as .csv file in the path, that will be loaded into Hadoop Architure and perform basic insights of the data.
